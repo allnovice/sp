@@ -37,4 +37,7 @@ Route::delete('/properties/{property}', [PropertyController::class, 'destroy'])
 Route::patch('/properties/{property}', [PropertyController::class, 'update'])
     ->name('properties.update');
 
+Route::get('/properties/export-pdf', [PropertyController::class, 'exportPdf'])
+    ->name('properties.export-pdf');
+
 require __DIR__.'/settings.php';

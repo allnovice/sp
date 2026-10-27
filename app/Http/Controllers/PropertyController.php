@@ -8,6 +8,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class PropertyController extends Controller
 {
@@ -193,5 +194,25 @@ public function update(Request $request, Property $property)
 
     return back()->with('success', 'Property updated successfully.');
 }
+public function exportPdf()
+{
+    $properties = Property::latest()->get();
 
+    $columns = PropertyColumn::where('is_visible', true)
+        ->orderBy('position')
+        ->get();
+
+    $total = $properties->sum(function ($property) {
+        $value = $property->office ?? 0;
+        return is_numeric($value) ? (float) $value : 0;
+    });
+
+    $pdf = Pdf::loadView('properties.pdf', [
+        'properties' => $properties,
+        'columns' => $columns,
+        'total' => $total,
+    ])->setPaper('a4', 'landscape');
+
+    return $pdf->download('property-register.pdf');
+}
 }

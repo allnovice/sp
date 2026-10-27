@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 
 interface PropertyColumn {
@@ -103,11 +103,55 @@ function saveEditing() {
         onSuccess: () => cancelEditing(),
     })
 }
-const selectedCategory = ref('')
 
+const selectedCategory = ref('')
 const visibleColumns = computed(() =>
     props.columns.filter(column => column.is_visible)
 )
+
+const filters = ref<Array<{
+    id: number
+    key: string
+    value: string
+}>>(
+    JSON.parse(localStorage.getItem('property-register-filters') || '[]')
+)
+const pendingFilterKey = ref('')
+
+let nextFilterId = Math.max(0, ...filters.value.map(f => f.id)) + 1
+function addFilter() {
+    pendingFilterKey.value = props.columns[0]?.key ?? ''
+}
+
+function applyFilter() {
+    if (!pendingFilterKey.value) return
+
+    if (filters.value.some(filter => filter.key === pendingFilterKey.value)) {
+        return
+    }
+
+    filters.value.push({
+        id: nextFilterId++,
+        key: pendingFilterKey.value,
+        value: '',
+    })
+
+    pendingFilterKey.value = ''
+}
+
+function getPropertyValue(property: Property, key: string) {
+    return property[key] ?? property.custom_fields?.[key] ?? ''
+}
+
+function getFilterOptions(key: string) {
+    return [...new Set(
+        props.properties
+            .map(property => String(getPropertyValue(property, key) ?? '').trim())
+            .filter(value => value !== '')
+    )].sort()
+}
+
+
 
 const categories = computed(() =>
     [...new Set(
@@ -119,18 +163,28 @@ const filteredProperties = computed(() =>
     props.properties.filter(property => {
         const term = search.value.toLowerCase()
 
-        const matchesSearch = !term ||
-            props.columns.some(column =>
-                String(property[column.key] ?? '')
-                    .toLowerCase()
-                    .includes(term)
-            )
+        const matchesSearch = !term || props.columns.some(column =>
+            String(getPropertyValue(property, column.key))
+                .toLowerCase()
+                .includes(term)
+        )
 
-        const matchesCategory = !selectedCategory.value ||
-            property.category === selectedCategory.value
+const matchesCustomFilters = filters.value.every(filter => {
+    if (!filter.value) return true
 
-        return matchesSearch && matchesCategory
+    return String(getPropertyValue(property, filter.key) ?? '')
+        .toLowerCase() === filter.value.toLowerCase()
+})
+
+        return matchesSearch && matchesCustomFilters
     })
+)
+watch(
+    filters,
+    (value) => {
+        localStorage.setItem('property-register-filters', JSON.stringify(value))
+    },
+    { deep: true }
 )
 </script>
 
@@ -147,12 +201,6 @@ const filteredProperties = computed(() =>
                     </p>
                 </div>
 
-                <button
-                    class="rounded-md bg-blue-700 px-4 py-2 text-white hover:bg-blue-800"
-                    @click="alert('Add form will be implemented next.')"
-                >
-                    + Add item
-                </button>
 <div
     v-if="uploadForm.errors.file || props.errors.file"
     class="my-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700"
@@ -280,16 +328,95 @@ const filteredProperties = computed(() =>
                     class="min-w-60 flex-1 rounded-md border border-gray-300 px-3 py-2"
                 />
 
-                <select
-                    v-model="selectedCategory"
-                    class="rounded-md border border-gray-300 px-3 py-2"
-                >
-                    <option value="">All categories</option>
-                    <option v-for="category in categories" :key="category">
-                        {{ category }}
-                    </option>
-                </select>
             </div>
+
+
+
+
+<div class="my-4 rounded-lg border border-gray-200 p-4">
+    <div class="mb-3 flex items-center justify-between">
+        <h2 class="font-semibold">Filters</h2>
+        <button
+            type="button"
+            class="rounded-md bg-blue-700 px-3 py-2 text-sm text-white"
+            @click="addFilter"
+        >
+            + Add Filter
+        </button>
+    </div>
+
+    <div v-if="pendingFilterKey === ''" class="mb-3">
+        <p class="text-sm text-gray-500">
+            Add a filter, then choose a column.
+        </p>
+    </div>
+
+    <div v-if="pendingFilterKey !== ''" class="mb-3 flex flex-wrap items-center gap-2">
+        <select
+            v-model="pendingFilterKey"
+            class="flex-1 rounded-md border border-gray-300 px-3 py-2"
+        >
+            <option
+                v-for="column in props.columns"
+                :key="column.id"
+                :value="column.key"
+            >
+                {{ column.label }}
+            </option>
+        </select>
+
+        <button
+            type="button"
+            class="rounded-md bg-green-700 px-3 py-2 text-white"
+            @click="applyFilter"
+        >
+            ✓ Apply
+        </button>
+
+        <button
+            type="button"
+            class="rounded-md border px-3 py-2"
+            @click="pendingFilterKey = ''"
+        >
+            Cancel
+        </button>
+    </div>
+
+    <div
+        v-for="filter in filters"
+        :key="filter.id"
+        class="mb-3 flex flex-wrap items-center gap-2"
+    >
+        <label class="font-medium">
+            {{ props.columns.find(column => column.key === filter.key)?.label }}
+        </label>
+
+        <select
+            v-model="filter.value"
+            class="flex-1 rounded-md border border-gray-300 px-3 py-2"
+        >
+            <option value="">All values</option>
+            <option
+                v-for="option in getFilterOptions(filter.key)"
+                :key="option"
+                :value="option"
+            >
+                {{ option }}
+            </option>
+        </select>
+
+        <button
+            type="button"
+            class="rounded-md border border-red-300 px-3 py-2 text-red-700"
+            @click="filters = filters.filter(f => f.id !== filter.id)"
+        >
+            −
+        </button>
+    </div>
+</div>
+
+
+
 
             <p class="mb-3 text-sm text-gray-500">
                 {{ filteredProperties.length }} items
@@ -328,7 +455,18 @@ const filteredProperties = computed(() =>
 </template>
 
 <template v-else>
-    <span>{{ property[column.key] ?? property.custom_fields?.[column.key] ?? '' }}</span>
+    <span>
+    {{
+        column.label === 'Unit Value' &&
+        property[column.key] !== null &&
+        property[column.key] !== ''
+            ? '₱' + Number(property[column.key]).toLocaleString('en-PH', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            })
+            : property[column.key] ?? property.custom_fields?.[column.key] ?? ''
+    }}
+</span>
 </template>
 
 <template v-if="column.key === 'property_no'">
