@@ -145,6 +145,7 @@ public function destroy(Property $property)
 
     return redirect()->back()->with('success', 'Property moved to trash.');
 }
+
 public function update(Request $request, Property $property)
 {
     $data = $request->validate([
@@ -169,8 +170,28 @@ public function update(Request $request, Property $property)
         $data['status'] = 'Active';
     }
 
+    $customFields = $property->custom_fields ?? [];
+
+    // Flatten any accidental nesting from earlier updates.
+    while (isset($customFields['custom_fields'])
+        && is_array($customFields['custom_fields'])) {
+        $nested = $customFields['custom_fields'];
+        unset($customFields['custom_fields']);
+        $customFields = array_merge($nested, $customFields);
+    }
+
+    // Save submitted custom column values.
+    foreach ($request->all() as $key => $value) {
+        if (str_starts_with($key, 'custom_')) {
+            $customFields[$key] = $value;
+        }
+    }
+
+    $data['custom_fields'] = $customFields;
+
     $property->update($data);
 
     return back()->with('success', 'Property updated successfully.');
 }
+
 }

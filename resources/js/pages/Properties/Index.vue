@@ -84,9 +84,12 @@ const editData = ref<Record<string, any>>({})
 
 function startEditing(property: Property) {
     editingId.value = property.id
-    editData.value = { ...property }
-}
 
+    editData.value = {
+        ...property,
+        ...(property.custom_fields ?? {}),
+    }
+}
 function cancelEditing() {
     editingId.value = null
     editData.value = {}
@@ -325,7 +328,7 @@ const filteredProperties = computed(() =>
 </template>
 
 <template v-else>
-    <span>{{ property[column.key] ?? '' }}</span>
+    <span>{{ property[column.key] ?? property.custom_fields?.[column.key] ?? '' }}</span>
 </template>
 
 <template v-if="column.key === 'property_no'">
