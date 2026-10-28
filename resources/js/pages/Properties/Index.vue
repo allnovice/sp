@@ -34,6 +34,9 @@ function uploadCsv() {
         onSuccess: () => uploadForm.reset(),
     })
 }
+function downloadTemplate() {
+    window.location.href = '/properties/template'
+}
 function exportPdf() {
 console.log(filteredProperties.value.map(property => property.id))
     window.location.href = `/properties/export-pdf?ids=${filteredProperties.value
@@ -429,6 +432,13 @@ watch(
     class="rounded-md bg-red-700 px-3 py-2 text-sm text-white"
 >
     Export PDF
+</button>
+<button
+    type="button"
+    @click="downloadTemplate"
+    class="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+>
+    Download Template
 </button>
             <p class="mb-3 text-sm text-gray-500">
                 {{ filteredProperties.length }} items
