@@ -455,17 +455,25 @@ watch(
 </template>
 
 <template v-else>
-    <span>
-    {{
-        column.label === 'Unit Value' &&
-        property[column.key] !== null &&
-        property[column.key] !== ''
-            ? '₱' + Number(property[column.key]).toLocaleString('en-PH', {
+<span>
+    
+{{
+    column.label === 'Unit Value'
+        ? (
+            property[column.key] ?? property.custom_fields?.[column.key]
+        ) !== null &&
+          (property[column.key] ?? property.custom_fields?.[column.key]) !== undefined &&
+          (property[column.key] ?? property.custom_fields?.[column.key]) !== ''
+            ? '₱' + Number(
+                property[column.key] ?? property.custom_fields?.[column.key]
+              ).toLocaleString('en-PH', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
-            })
-            : property[column.key] ?? property.custom_fields?.[column.key] ?? ''
-    }}
+              })
+            : ''
+        : (property[column.key] ?? property.custom_fields?.[column.key] ?? '')
+}}
+
 </span>
 </template>
 
