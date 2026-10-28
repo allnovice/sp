@@ -448,8 +448,21 @@ watch(
                                 class="border-b p-3"
                             >
 <template v-if="editingId === property.id">
-    <input
+    <select
+        v-if="column.type === 'boolean'"
         v-model="editData[column.key]"
+        class="w-full rounded border px-2 py-1"
+    >
+        <option value="">Select...</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+    </select>
+
+    <input
+        v-else
+        v-model="editData[column.key]"
+        :type="column.type === 'number' ? 'number' : column.type === 'date' ? 'date' : 'text'"
+        :step="column.type === 'number' ? 'any' : undefined"
         class="w-full min-w-24 rounded border border-blue-400 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
     />
 </template>

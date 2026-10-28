@@ -171,6 +171,30 @@ public function update(Request $request, Property $property)
         $data['status'] = 'Active';
     }
 
+// Validate custom fields according to their configured column types.
+$customRules = [];
+
+$customColumns = PropertyColumn::where('key', 'like', 'custom_%')->get();
+
+foreach ($customColumns as $column) {
+    $key = $column->key;
+
+    if (!$request->has($key)) {
+        continue;
+    }
+
+    $rules = match ($column->type) {
+        'number' => ['nullable', 'numeric'],
+        'date' => ['nullable', 'date'],
+        'boolean' => ['nullable', 'in:Yes,No,1,0,true,false'],
+        default => ['nullable', 'string'],
+    };
+
+    $customRules[$key] = $rules;
+}
+
+$request->validate($customRules);
+
     $customFields = $property->custom_fields ?? [];
 
     // Flatten any accidental nesting from earlier updates.
