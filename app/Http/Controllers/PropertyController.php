@@ -12,14 +12,14 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class PropertyController extends Controller
 {
-    public function index(): Response
-    {
-        return Inertia::render('Properties/Index', [
-            'properties' => Property::latest()->get(),
-            'columns' => PropertyColumn::orderBy('position')
-                ->get(),
-        ]);
-    }
+public function index(): Response
+{
+    return Inertia::render('Properties/Index', [
+        'properties' => Property::latest()->get(),
+        'columns' => PropertyColumn::orderBy('position')->get(),
+        'existingPropertyNumbers' => Property::pluck('property_no'),
+    ]);
+}
 public function template()
 {
     $columns = PropertyColumn::orderBy('position')->get();
@@ -38,6 +38,7 @@ public function template()
         'Content-Type' => 'text/csv; charset=UTF-8',
     ]);
 }
+
 public function import(Request $request)
 {
     $request->validate([
@@ -45,11 +46,10 @@ public function import(Request $request)
     ]);
 
     $columns = PropertyColumn::orderBy('position')->get();
-
     $expectedHeaders = $columns->pluck('label')->toArray();
+    $keys = $columns->pluck('key')->toArray();
 
     $file = fopen($request->file('file')->getRealPath(), 'r');
-
     $headers = fgetcsv($file);
 
     if ($headers !== $expectedHeaders) {
@@ -61,82 +61,104 @@ public function import(Request $request)
     }
 
     $rows = [];
+    $errors = [];
     $rowNumber = 1;
+    $propertyNumbers = [];
+    $standardFields = array_diff(
+        \Illuminate\Support\Facades\Schema::getColumnListing('properties'),
+        ['id', 'custom_fields', 'created_at', 'updated_at']
+    );
 
     while (($values = fgetcsv($file)) !== false) {
         $rowNumber++;
 
         if (count($values) !== count($columns)) {
-            fclose($file);
-
-            return back()->withErrors([
-                'file' => "Row {$rowNumber} has a different number of values than the template.",
-            ]);
+            $errors[] = "Row {$rowNumber}: Incorrect number of columns.";
+            continue;
         }
 
-        $row = array_combine(
-            $columns->pluck('key')->toArray(),
-            $values
-        );
+        $row = array_combine($keys, $values);
 
-        $rows[] = $row;
+        foreach ($row as $key => $value) {
+            $value = trim((string) $value);
+
+            if ($value === '') {
+                $row[$key] = null;
+                continue;
+            }
+
+            $column = $columns->firstWhere('key', $key);
+            $type = $column?->type ?? 'text';
+
+            $valid = match ($type) {
+                'number' => is_numeric($value),
+                'date' => strtotime($value) !== false,
+                'boolean' => in_array(
+                    strtolower($value),
+                    ['yes', 'no', '1', '0', 'true', 'false'],
+                    true
+                ),
+                default => true,
+            };
+
+            if (!$valid) {
+                $errors[] = "Row {$rowNumber}, {$column->label}: Invalid {$type} value.";
+            }
+
+            $row[$key] = $value;
+        }
+
+
+$number = trim((string) ($row['property_no'] ?? ''));
+
+if ($number === '') {
+    $errors[] = "Row {$rowNumber}: Property No. is required.";
+    continue;
+}
+
+if (
+    in_array($number, $propertyNumbers, true) ||
+    Property::where('property_no', $number)->exists()
+) {
+    // Skip duplicate rows entirely.
+    continue;
+}
+
+$propertyNumbers[] = $number;
+$rows[] = $row;
+
     }
 
     fclose($file);
 
-$standardFields = array_diff(
-    \Illuminate\Support\Facades\Schema::getColumnListing('properties'),
-    ['id', 'custom_fields', 'created_at', 'updated_at']
-);
-
-DB::transaction(function () use ($rows, $standardFields) {
-$propertyNumbers = [];
-
-foreach ($rows as $index => $row) {
-    $number = trim((string) ($row['property_no'] ?? ''));
-
-    if ($number === '') {
+    if ($errors) {
         return back()->withErrors([
-            'file' => 'CSV row ' . ($index + 2) . ': Property Number cannot be blank.',
+            'file' => implode("\n", array_slice($errors, 0, 20))
+                . (count($errors) > 20 ? "\nMore errors omitted." : ''),
         ]);
     }
 
-    if (in_array($number, $propertyNumbers, true)) {
-        return back()->withErrors([
-            'file' => "Duplicate Property Number in CSV: {$number}",
-        ]);
-    }
+    DB::transaction(function () use ($rows, $standardFields) {
+        foreach ($rows as $row) {
+            $propertyData = [];
+            $customFields = [];
 
-    if (Property::where('property_no', $number)->exists()) {
-        return back()->withErrors([
-            'file' => "Property Number already exists: {$number}",
-        ]);
-    }
-
-    $propertyNumbers[] = $number;
-}
-    foreach ($rows as $row) {
-        $propertyData = [];
-        $customFields = [];
-
-        foreach ($row as $key => $value) {
-            $value = $value === '' ? null : $value;
-
-            if (in_array($key, $standardFields, true)) {
-                $propertyData[$key] = $value;
-            } elseif (str_starts_with($key, 'custom_')) {
-                $customFields[$key] = $value;
+            foreach ($row as $key => $value) {
+                if (in_array($key, $standardFields, true)) {
+                    $propertyData[$key] = $value;
+                } elseif (str_starts_with($key, 'custom_')) {
+                    $customFields[$key] = $value;
+                }
             }
+
+            if (empty($propertyData['status'])) {
+                $propertyData['status'] = 'Active';
+            }
+
+            $propertyData['custom_fields'] = $customFields;
+            Property::create($propertyData);
         }
-
-if (empty($propertyData['status'])) {
-    $propertyData['status'] = 'Active';
-}
-        $propertyData['custom_fields'] = $customFields;
-
-        Property::create($propertyData);
-    }
-});
+    });
 
     return back()->with('success', count($rows) . ' properties imported successfully.');
 }

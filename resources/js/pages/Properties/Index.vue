@@ -21,19 +21,198 @@ const props = defineProps<{
     properties: Property[]
     columns: PropertyColumn[]
     errors: Record<string, string>
+    existingPropertyNumbers: string[]
 }>()
 const uploadForm = useForm({
     file: null as File | null,
 })
+const showCsvPreview = ref(false)
+const csvHeaders = ref<string[]>([])
+const csvRows = ref<string[][]>([])
+const csvError = ref('')
+const propertyNoIndex = computed(() =>
+    props.columns.findIndex(column => column.key === 'property_no')
+)
 
-function uploadCsv() {
+const existingNumbers = new Set(
+    props.existingPropertyNumbers.map(number => String(number).trim())
+)
+
+const isDuplicateRow = (row: string[], rowIndex: number) => {
+    const number = (row[propertyNoIndex.value] ?? '').trim()
+
+    if (!number) return false
+
+    return (
+        existingNumbers.has(number) ||
+        csvRows.value.slice(0, rowIndex).some(
+            previous => (previous[propertyNoIndex.value] ?? '').trim() === number
+        )
+    )
+}
+
+const duplicateCount = computed(() =>
+    csvRows.value.filter((row, index) => isDuplicateRow(row, index)).length
+)
+
+function parseCsv(text: string): string[][] {
+    const rows: string[][] = []
+    let row: string[] = []
+    let value = ''
+    let quoted = false
+
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i]
+
+        if (char === '"' && quoted && text[i + 1] === '"') {
+            value += '"'
+            i++
+        } else if (char === '"') {
+            quoted = !quoted
+        } else if (char === ',' && !quoted) {
+            row.push(value)
+            value = ''
+        } else if ((char === '\n' || char === '\r') && !quoted) {
+            if (char === '\r' && text[i + 1] === '\n') i++
+            row.push(value)
+            if (row.some(cell => cell.trim() !== '')) rows.push(row)
+            row = []
+            value = ''
+        } else {
+            value += char
+        }
+    }
+
+    row.push(value)
+    if (row.some(cell => cell.trim() !== '')) rows.push(row)
+
+    if (rows.length) {
+        rows[0][0] = rows[0][0].replace(/^\uFEFF/, '')
+    }
+
+    return rows
+}
+
+async function uploadCsv() {
+    csvError.value = ``
+    showCsvPreview.value = false
+
+    const file = uploadForm.file
+    if (!file) {
+        csvError.value = 'Please choose a CSV file.'
+        return
+    }
+
+    try {
+        const text = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(String(reader.result ?? ''))
+            reader.onerror = () => reject(new Error('Could not read the CSV file.'))
+            reader.readAsText(file)
+        })
+
+        const rows = parseCsv(text)
+        console.log('CSV parsed rows:', rows)
+        if (!rows.length) {
+            csvError.value = 'The CSV file is empty.'
+            return
+        }
+
+        const expectedHeaders = props.columns.map(column => column.label)
+        const headers = rows[0]
+
+        if (
+            headers.length !== expectedHeaders.length ||
+            headers.some((header, i) => header !== expectedHeaders[i])
+        ) {
+            csvError.value = 'CSV headers do not match the current template.'
+            return
+        }
+
+        const dataRows = rows.slice(1)
+
+
+        for (let i = 0; i < dataRows.length; i++) {
+            const row = dataRows[i]
+
+            if (row.length !== headers.length) {
+                csvError.value = `CSV row ${i + 2} has ${row.length} values; expected ${headers.length}.`
+                return
+            }
+
+            for (let j = 0; j < props.columns.length; j++) {
+                const column = props.columns[j]
+                const value = (row[j] ?? '').trim()
+
+                // All fields except Property No. may be blank.
+                if (value === '') continue
+
+                let valid = true
+
+                if (column.type === 'number') {
+                    valid = value !== '' && Number.isFinite(Number(value))
+                } else if (column.type === 'date') {
+                    valid = !Number.isNaN(Date.parse(value))
+                } else if (column.type === 'boolean') {
+                    valid = ['yes', 'no', '1', '0', 'true', 'false']
+                        .includes(value.toLowerCase())
+                }
+
+                if (!valid) {
+                    csvError.value =
+                        `Row ${i + 2}, ${column.label}: Invalid ${column.type} value "${value}".`
+                    return
+                }
+            }
+        }
+
+
+        const propertyNoIndex = props.columns.findIndex(
+            column => column.key === 'property_no'
+        )
+
+        if (propertyNoIndex !== -1) {
+            const seen = new Set<string>()
+
+            for (let i = 0; i < dataRows.length; i++) {
+                const number = (dataRows[i][propertyNoIndex] ?? '').trim()
+
+                if (!number) {
+                    csvError.value = `CSV row ${i + 2}: Property Number cannot be blank.`
+                    return
+                }
+
+                if (seen.has(number)) {
+                    csvError.value = `Duplicate Property Number in CSV: ${number}`
+                    return
+                }
+
+                seen.add(number)
+            }
+        }
+
+        csvHeaders.value = headers
+        csvRows.value = dataRows
+        showCsvPreview.value = true
+    } catch {
+        csvError.value = 'Could not read this CSV file. Please try saving it as CSV UTF-8.'
+    }
+}
+
+function confirmCsvUpload() {
     if (!uploadForm.file) return
 
     uploadForm.post('/properties/import', {
         forceFormData: true,
-        onSuccess: () => uploadForm.reset(),
+        onSuccess: () => {
+            uploadForm.reset()
+            showCsvPreview.value = false
+            csvRows.value = []
+            csvHeaders.value = []
+        },
     })
 }
+
 function downloadTemplate() {
     window.location.href = '/properties/template'
 }
@@ -223,6 +402,7 @@ watch(
 >
     Manage Columns
 </button>
+
 <form
     class="flex flex-wrap items-center gap-2"
     @submit.prevent="uploadCsv"
@@ -231,18 +411,83 @@ watch(
         type="file"
         accept=".csv,text/csv"
         class="max-w-56 rounded-md border border-gray-300 px-3 py-2 text-sm"
-        @change="uploadForm.file = ($event.target as HTMLInputElement).files?.[0] ?? null"
+        @change="uploadForm.file = ($event.target as HTMLInputElement).files?.[0] ?? null; csvError = ''; showCsvPreview = false"
         required
     />
 
     <button
         type="submit"
-        :disabled="uploadForm.processing"
-        class="rounded-md bg-green-700 px-4 py-2 text-white hover:bg-green-800 disabled:opacity-50"
+        class="rounded-md bg-green-700 px-4 py-2 text-white hover:bg-green-800"
     >
-        {{ uploadForm.processing ? 'Uploading...' : 'Upload CSV' }}
+        Preview CSV
     </button>
 </form>
+
+<p v-if="csvError || props.errors.file" class="mt-2 text-sm text-red-600">
+    {{ csvError || props.errors.file }}
+</p>
+
+<div
+    v-if="showCsvPreview"
+    class="mt-4 w-full rounded-lg border border-gray-300 p-4"
+>
+    <h3 class="mb-2 font-semibold">
+        Preview: {{ csvRows.length - duplicateCount }} to import,
+{{ duplicateCount }} duplicates to skip
+    </h3>
+
+    <div class="max-h-80 overflow-auto">
+        <table class="min-w-full border-collapse text-sm">
+            <thead>
+                <tr>
+                    <th
+                        v-for="(header, i) in csvHeaders"
+                        :key="i"
+                        class="whitespace-nowrap border p-2 text-left"
+                    >
+                        {{ header }}
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr
+    v-for="(row, rowIndex) in csvRows"
+    :key="rowIndex"
+    :class="isDuplicateRow(row, rowIndex) ? 'bg-red-100 text-red-700 line-through' : ''"
+>
+                    <td
+                        v-for="(cell, colIndex) in row"
+                        :key="colIndex"
+                        class="whitespace-nowrap border p-2"
+                    >
+                        {{ cell }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-4 flex gap-2">
+        <button
+            type="button"
+            @click="confirmCsvUpload"
+            :disabled="uploadForm.processing || csvRows.length === 0"
+            class="rounded-md bg-green-700 px-4 py-2 text-white disabled:opacity-50"
+        >
+            {{ uploadForm.processing ? 'Uploading...' : 'Confirm Upload' }}
+        </button>
+
+        <button
+            type="button"
+            @click="showCsvPreview = false"
+            class="rounded-md border px-4 py-2"
+        >
+            Cancel
+        </button>
+    </div>
+</div>
+
+
             </div>
 <div
     v-if="showColumnManager"
