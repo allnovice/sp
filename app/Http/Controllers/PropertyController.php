@@ -226,10 +226,19 @@ public function exportPdf()
         ->orderBy('position')
         ->get();
 
-    $total = $properties->sum(function ($property) {
-        $value = $property->office ?? 0;
-        return is_numeric($value) ? (float) $value : 0;
-    });
+$unitValueColumn = PropertyColumn::where('label', 'Unit Value')
+    ->where('key', 'like', 'custom_%')
+    ->first();
+
+$total = $properties->sum(function ($property) use ($unitValueColumn) {
+    if (!$unitValueColumn) {
+        return 0;
+    }
+
+    $value = $property->custom_fields[$unitValueColumn->key] ?? 0;
+
+    return is_numeric($value) ? (float) $value : 0;
+});
 
     $pdf = Pdf::loadView('properties.pdf', [
         'properties' => $properties,
