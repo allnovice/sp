@@ -220,25 +220,30 @@ $request->validate($customRules);
 }
 public function exportPdf()
 {
-    $properties = Property::latest()->get();
+    $ids = array_filter(explode(',', request()->query('ids', '')));
+
+    $properties = Property::whereIn('id', $ids)
+        ->get()
+        ->sortBy(fn ($property) => array_search($property->id, $ids))
+        ->values();
 
     $columns = PropertyColumn::where('is_visible', true)
         ->orderBy('position')
         ->get();
 
-$unitValueColumn = PropertyColumn::where('label', 'Unit Value')
-    ->where('key', 'like', 'custom_%')
-    ->first();
+    $unitValueColumn = PropertyColumn::where('label', 'Unit Value')
+        ->where('key', 'like', 'custom_%')
+        ->first();
 
-$total = $properties->sum(function ($property) use ($unitValueColumn) {
-    if (!$unitValueColumn) {
-        return 0;
-    }
+    $total = $properties->sum(function ($property) use ($unitValueColumn) {
+        if (!$unitValueColumn) {
+            return 0;
+        }
 
-    $value = $property->custom_fields[$unitValueColumn->key] ?? 0;
+        $value = $property->custom_fields[$unitValueColumn->key] ?? 0;
 
-    return is_numeric($value) ? (float) $value : 0;
-});
+        return is_numeric($value) ? (float) $value : 0;
+    });
 
     $pdf = Pdf::loadView('properties.pdf', [
         'properties' => $properties,

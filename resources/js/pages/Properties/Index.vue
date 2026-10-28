@@ -34,6 +34,12 @@ function uploadCsv() {
         onSuccess: () => uploadForm.reset(),
     })
 }
+function exportPdf() {
+console.log(filteredProperties.value.map(property => property.id))
+    window.location.href = `/properties/export-pdf?ids=${filteredProperties.value
+        .map(property => property.id)
+        .join(',')}`
+}
 const search = ref('')
 const showColumnManager = ref(false)
 const newColumnLabel = ref('')
@@ -417,7 +423,13 @@ watch(
 
 
 
-
+<button
+    type="button"
+    @click="exportPdf"
+    class="rounded-md bg-red-700 px-3 py-2 text-sm text-white"
+>
+    Export PDF
+</button>
             <p class="mb-3 text-sm text-gray-500">
                 {{ filteredProperties.length }} items
             </p>
