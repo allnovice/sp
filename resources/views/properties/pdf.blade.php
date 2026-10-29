@@ -29,8 +29,7 @@
         $groups = [];
 
         // Identify the Property # column
-        $propertyColumn = $columns->firstWhere('label', 'Property #');
-        $propertyKey = $propertyColumn?->key;
+        $propertyKey = 'property_no';
 
         // Group components by common prefix, number and suffix
         foreach ($properties as $property) {
