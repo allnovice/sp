@@ -161,7 +161,7 @@
                     @php
                         $key = $column->key;
                         $isPropertyNo =
-                            $column->label === 'Property #';
+                            $key === 'property_no';
 
                         if ($isPropertyNo) {
                             $cell = [
