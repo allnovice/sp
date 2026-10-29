@@ -31,22 +31,22 @@ export default defineConfig({
             formVariants: true,
         }),
     ]),
-server: {
-    host: '0.0.0.0',
-    cors: true,
-    hmr: {
-        host: '192.168.100.51',
+    server: {
+        host: '0.0.0.0',
+        cors: true,
+        hmr: {
+            host: '192.168.100.51',
+        },
+        watch: {
+            ignored: [
+                '**/.agents/**',
+                '**/.claude/**',
+                '**/.cursor/**',
+                '**/.junie/**',
+                '**/vendor/**',
+            ],
+        },
     },
-    watch: {
-        ignored: [
-            '**/.agents/**',
-            '**/.claude/**',
-            '**/.cursor/**',
-            '**/.junie/**',
-            '**/vendor/**',
-        ],
-    },
-},
     lint: {
         ignorePatterns: [
             'vendor/**',
