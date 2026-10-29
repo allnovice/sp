@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Property;
 use App\Models\PropertyColumn;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class PropertyColumnController extends Controller
 {
@@ -17,7 +18,7 @@ class PropertyColumnController extends Controller
             'type' => ['required', Rule::in(['text', 'number', 'date', 'boolean'])],
         ]);
 
-        $key = 'custom_' . str()->slug($data['label'], '_');
+        $key = 'custom_'.str()->slug($data['label'], '_');
 
         if (PropertyColumn::where('key', $key)->exists()) {
             return back()->withErrors([
@@ -47,41 +48,45 @@ class PropertyColumnController extends Controller
 
         return back();
     }
-public function destroy(PropertyColumn $propertyColumn): RedirectResponse
-{
-    if (! str_starts_with($propertyColumn->key, 'custom_')) {
-        return back()->withErrors([
-            'column' => 'Default columns cannot be deleted.',
-        ]);
-    }
 
-    DB::transaction(function () use ($propertyColumn) {
-        \App\Models\Property::query()->each(function ($property) use ($propertyColumn) {
-            $customFields = $property->custom_fields ?? [];
-            unset($customFields[$propertyColumn->key]);
-            $property->custom_fields = $customFields;
-            $property->save();
+    public function destroy(PropertyColumn $propertyColumn): RedirectResponse
+    {
+        if (! str_starts_with($propertyColumn->key, 'custom_')) {
+            return back()->withErrors([
+                'column' => 'Default columns cannot be deleted.',
+            ]);
+        }
+
+        DB::transaction(function () use ($propertyColumn) {
+            Property::query()->each(function ($property) use ($propertyColumn) {
+                $customFields = is_array($property->custom_fields)
+    ? $property->custom_fields
+    : [];
+                unset($customFields[$propertyColumn->key]);
+                $property->custom_fields = $customFields;
+                $property->save();
+            });
+
+            $propertyColumn->delete();
         });
 
-        $propertyColumn->delete();
-    });
+        return back();
+    }
 
-    return back();
-}
-public function reorder(Request $request): RedirectResponse
-{
-    $data = $request->validate([
-        'columns' => ['required', 'array'],
-        'columns.*' => ['required', 'integer', 'distinct', 'exists:property_columns,id'],
-    ]);
+    public function reorder(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'columns' => ['required', 'array'],
+            'columns.*' => ['required', 'integer', 'distinct', 'exists:property_columns,id'],
+        ]);
 
-    DB::transaction(function () use ($data) {
-        foreach ($data['columns'] as $position => $id) {
-            PropertyColumn::where('id', $id)
-                ->update(['position' => $position]);
-        }
-    });
+        DB::transaction(function () use ($data) {
+            foreach ($data['columns'] as $position => $id) {
+                PropertyColumn::where('id', $id)
+                    ->update(['position' => $position]);
+            }
+        });
 
-    return back();
-}
+        return back();
+    }
 }

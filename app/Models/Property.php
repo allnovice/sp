@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/** @property array<string, mixed>|null $custom_fields */
 class Property extends Model
 {
     use SoftDeletes;

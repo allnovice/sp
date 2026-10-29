@@ -1,8 +1,8 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\PropertyController;
 use App\Http\Controllers\PropertyColumnController;
+use App\Http\Controllers\PropertyController;
+use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
 
