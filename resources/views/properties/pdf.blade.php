@@ -51,7 +51,8 @@
 
     @php
         // Change this number to test pagination.
-        $maxGroupsPerPage = 6;
+        $firstPageGroups = 6;
+        $otherPagesGroups = 8;
 
         $groups = [];
         $propertyKey = 'property_no';
@@ -102,24 +103,28 @@
         </thead>
 
         @foreach ($groups as $group)
-            @if (
-                $groupIndex > 0
-                && $groupIndex % $maxGroupsPerPage === 0
-            )
-                </tbody>
-            </table>
+@if (
+    $groupIndex > 0 &&
+    (
+        ($groupIndex < $firstPageGroups && $groupIndex === $firstPageGroups) ||
+        ($groupIndex >= $firstPageGroups &&
+         ($groupIndex - $firstPageGroups) % $otherPagesGroups === 0)
+    )
+)
+    </tbody>
+    </table>
 
-            <div class="page-break"></div>
+    <div class="page-break"></div>
 
-            <table>
-                <thead>
-                    <tr>
-                        @foreach ($columns as $column)
-                            <th>{{ $column->label }}</th>
-                        @endforeach
-                    </tr>
-                </thead>
-            @endif
+    <table>
+        <thead>
+            <tr>
+                @foreach ($columns as $column)
+                    <th>{{ $column->label }}</th>
+                @endforeach
+            </tr>
+        </thead>
+@endif
 
             <tbody>
                 @php
