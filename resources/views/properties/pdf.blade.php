@@ -52,7 +52,7 @@
     @php
         // Change this number to test pagination.
         $firstPageGroups = 6;
-        $otherPagesGroups = 8;
+        $otherPagesGroups = 7;
 
         $groups = [];
         $propertyKey = 'property_no';
