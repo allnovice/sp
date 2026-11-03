@@ -364,31 +364,92 @@ const categories = computed(() =>
     ].sort(),
 );
 
-const filteredProperties = computed(() =>
-    props.properties.filter((property) => {
-        const term = search.value.toLowerCase();
+const sortKey = ref('property_no');
+const sortDirection = ref<'asc' | 'desc'>('asc');
 
-        const matchesSearch =
-            !term ||
-            props.columns.some((column) =>
-                String(getPropertyValue(property, column.key))
-                    .toLowerCase()
-                    .includes(term),
-            );
+const filteredProperties = computed(() => {
+    const term = search.value.toLowerCase();
 
-        const matchesCustomFilters = filters.value.every((filter) => {
-            if (!filter.value) return true;
+    return props.properties
+        .filter((property) => {
+            const matchesSearch =
+                !term ||
+                props.columns.some((column) =>
+                    String(getPropertyValue(property, column.key))
+                        .toLowerCase()
+                        .includes(term),
+                );
 
-            return (
-                String(
-                    getPropertyValue(property, filter.key) ?? '',
-                ).toLowerCase() === filter.value.toLowerCase()
-            );
+            const matchesCustomFilters = filters.value.every((filter) => {
+                if (!filter.value) return true;
+
+                return (
+                    String(
+                        getPropertyValue(property, filter.key) ?? '',
+                    ).toLowerCase() === filter.value.toLowerCase()
+                );
+            });
+
+            return matchesSearch && matchesCustomFilters;
+        })
+        .sort((a, b) => {
+            const av = getPropertyValue(a, sortKey.value) ?? '';
+            const bv = getPropertyValue(b, sortKey.value) ?? '';
+
+            let comparison: number;
+
+            if (sortKey.value === 'property_no') {
+                const extract = (value: unknown) => {
+                    const match = String(value).match(
+                        /^(.*?)-([A-D])-(\d+)-(.+)$/,
+                    );
+
+                    return match
+                        ? {
+                              prefix: match[1],
+                              letter: match[2],
+                              number: Number(match[3]),
+                              suffix: match[4],
+                          }
+                        : null;
+                };
+
+                const pa = extract(av);
+                const pb = extract(bv);
+
+                if (pa && pb) {
+                    comparison =
+                        pa.prefix.localeCompare(pb.prefix, undefined, {
+                            numeric: true,
+                            sensitivity: 'base',
+                        }) ||
+                        pa.number - pb.number ||
+                        pa.letter.localeCompare(pb.letter) ||
+                        pa.suffix.localeCompare(pb.suffix, undefined, {
+                            numeric: true,
+                            sensitivity: 'base',
+                        });
+                } else {
+                    comparison = String(av).localeCompare(
+                        String(bv),
+                        undefined,
+                        {
+                            numeric: true,
+                            sensitivity: 'base',
+                        },
+                    );
+                }
+            } else {
+                comparison = String(av).localeCompare(String(bv), undefined, {
+                    numeric: true,
+                    sensitivity: 'base',
+                });
+            }
+
+            return sortDirection.value === 'asc' ? comparison : -comparison;
         });
+});
 
-        return matchesSearch && matchesCustomFilters;
-    }),
-);
 watch(
     filters,
     (value) => {
@@ -747,9 +808,23 @@ watch(
                             <th
                                 v-for="column in visibleColumns"
                                 :key="column.id"
-                                class="border-b p-3"
+                                class="cursor-pointer border-b p-3 select-none"
+                                @click="
+                                    if (sortKey === column.key) {
+                                        sortDirection =
+                                            sortDirection === 'asc'
+                                                ? 'desc'
+                                                : 'asc';
+                                    } else {
+                                        sortKey = column.key;
+                                        sortDirection = 'asc';
+                                    }
+                                "
                             >
                                 {{ column.label }}
+                                <span v-if="sortKey === column.key">
+                                    {{ sortDirection === 'asc' ? '↑' : '↓' }}
+                                </span>
                             </th>
                         </tr>
                     </thead>
