@@ -7,6 +7,7 @@ use App\Concerns\ProfileValidationRules;
 use App\Models\User;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
+use App\Models\PropertyColumn;
 
 class CreateNewUser implements CreatesNewUsers
 {
@@ -24,10 +25,39 @@ class CreateNewUser implements CreatesNewUsers
             'password' => $this->passwordRules(),
         ])->validate();
 
-        return User::create([
-            'name' => $input['name'],
-            'email' => $input['email'],
-            'password' => $input['password'],
-        ]);
+$user = User::create([
+    'name' => $input['name'],
+    'email' => $input['email'],
+    'password' => $input['password'],
+]);
+
+$user->propertyColumns()->createMany([
+    [
+        'key' => 'property_no',
+        'label' => 'Property No.',
+        'type' => 'text',
+        'is_visible' => true,
+        'is_required' => true,
+        'position' => 0,
+    ],
+    [
+        'key' => 'created_at',
+        'label' => 'Date Added',
+        'type' => 'datetime',
+        'is_visible' => false,
+        'is_required' => false,
+        'position' => 1,
+    ],
+    [
+        'key' => 'updated_at',
+        'label' => 'Last Updated',
+        'type' => 'datetime',
+        'is_visible' => false,
+        'is_required' => false,
+        'position' => 2,
+    ],
+]);
+
+return $user;
     }
 }

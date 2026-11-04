@@ -13,6 +13,9 @@ use Illuminate\Support\Carbon;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Property;
+use App\Models\PropertyColumn;
 
 /**
  * @property int $id
@@ -47,4 +50,13 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'two_factor_confirmed_at' => 'datetime',
         ];
     }
+public function properties(): HasMany
+{
+    return $this->hasMany(Property::class);
+}
+
+public function propertyColumns(): HasMany
+{
+    return $this->hasMany(PropertyColumn::class);
+}
 }

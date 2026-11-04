@@ -339,7 +339,21 @@ function applyFilter() {
 }
 
 function getPropertyValue(property: Property, key: string) {
-    return property[key] ?? property.custom_fields?.[key] ?? '';
+    const value = property[key] ?? property.custom_fields?.[key] ?? '';
+
+if (['created_at', 'updated_at'].includes(key) && value) {
+    return new Date(value).toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+    });
+}
+
+    return value;
 }
 
 function getFilterOptions(key: string) {
@@ -903,11 +917,7 @@ watch(
                                                           },
                                                       )
                                                     : ''
-                                                : (property[column.key] ??
-                                                  property.custom_fields?.[
-                                                      column.key
-                                                  ] ??
-                                                  '')
+                                                : getPropertyValue(property, column.key)
                                         }}
                                     </span>
                                 </template>

@@ -17,43 +17,51 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PropertyController extends Controller
 {
-    public function index(): Response
-    {
-        return Inertia::render('Properties/Index', [
-            'properties' => Property::latest()->get(),
-            'columns' => PropertyColumn::orderBy('position')->get(),
-            'existingPropertyNumbers' => Property::pluck('property_no'),
-        ]);
-    }
+public function index(Request $request): Response
+{
+    $user = $request->user();
 
-    public function template(): StreamedResponse
-    {
-        $columns = PropertyColumn::orderBy('position')->get();
+    return Inertia::render('Properties/Index', [
+        'properties' => $user->properties()->latest()->get(),
+        'columns' => $user->propertyColumns()
+            ->orderBy('position')
+            ->get(),
+        'existingPropertyNumbers' => $user->properties()
+            ->pluck('property_no'),
+    ]);
+}
+public function template(Request $request): StreamedResponse
+{
+    $columns = $request->user()->propertyColumns()
+        ->orderBy('position')
+        ->get();
 
-        $headers = $columns->pluck('label')->toArray();
+    $headers = $columns->pluck('label')->toArray();
 
-        $callback = function () use ($headers) {
-            $file = fopen('php://output', 'w');
-            if ($file === false) {
-                return;
-            }
-            fputcsv($file, $headers);
+    $callback = function () use ($headers) {
+        $file = fopen('php://output', 'w');
 
-            fclose($file);
-        };
+        if ($file === false) {
+            return;
+        }
 
-        return response()->streamDownload($callback, 'property-template.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
-    }
+        fputcsv($file, $headers);
+        fclose($file);
+    };
 
+    return response()->streamDownload($callback, 'property-template.csv', [
+        'Content-Type' => 'text/csv; charset=UTF-8',
+    ]);
+}
     public function import(Request $request): RedirectResponse
     {
         $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
         ]);
 
-        $columns = PropertyColumn::orderBy('position')->get();
+        $columns = $request->user()->propertyColumns()
+            ->orderBy('position')
+            ->get();
         $expectedHeaders = $columns->pluck('label')->toArray();
         $keys = $columns->pluck('key')->toArray();
 
@@ -133,7 +141,9 @@ class PropertyController extends Controller
 
             if (
                 in_array($number, $propertyNumbers, true) ||
-                Property::where('property_no', $number)->exists()
+                $request->user()->properties()
+                    ->where('property_no', $number)
+                    ->exists()
             ) {
                 // Skip duplicate rows entirely.
                 continue;
@@ -153,7 +163,7 @@ class PropertyController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($rows, $standardFields) {
+        DB::transaction(function () use ($rows, $standardFields, $request) {
             foreach ($rows as $row) {
                 $propertyData = [];
                 $customFields = [];
@@ -171,22 +181,30 @@ class PropertyController extends Controller
                 }
 
                 $propertyData['custom_fields'] = $customFields;
-                Property::create($propertyData);
+                $request->user()->properties()->create($propertyData);
             }
         });
 
         return back()->with('success', count($rows).' properties imported successfully.');
     }
 
-    public function destroy(Property $property): RedirectResponse
-    {
-        $property->delete();
+public function destroy(Request $request, Property $property): RedirectResponse
+{
+    abort_unless(
+        $property->user_id === $request->user()->id,
+        404
+    );
 
-        return redirect()->back()->with('success', 'Property moved to trash.');
-    }
+    $property->delete();
 
+    return back()->with('success', 'Property moved to trash.');
+}
     public function update(Request $request, Property $property): RedirectResponse
     {
+    abort_unless(
+        $property->user_id === $request->user()->id,
+        404
+    );
         $data = $request->validate([
             'property_no' => [
                 'required',
@@ -212,7 +230,9 @@ class PropertyController extends Controller
         // Validate custom fields according to their configured column types.
         $customRules = [];
 
-        $customColumns = PropertyColumn::where('key', 'like', 'custom_%')->get();
+        $customColumns = $request->user()->propertyColumns()
+            ->where('key', 'like', 'custom_%')
+            ->get();
 
         foreach ($customColumns as $column) {
             $key = $column->key;
@@ -261,18 +281,21 @@ class PropertyController extends Controller
     {
         $ids = array_filter(explode(',', request()->query('ids', '')));
 
-        $properties = Property::whereIn('id', $ids)
-            ->get()
-            ->sortBy(fn ($property) => array_search($property->id, $ids))
-            ->values();
+$properties = request()->user()->properties()
+    ->whereIn('id', $ids)
+    ->get()
+    ->sortBy(fn ($property) => array_search($property->id, $ids))
+    ->values();
 
-        $columns = PropertyColumn::where('is_visible', true)
-            ->orderBy('position')
-            ->get();
+$columns = request()->user()->propertyColumns()
+    ->where('is_visible', true)
+    ->orderBy('position')
+    ->get();
 
-        $unitValueColumn = PropertyColumn::where('label', 'Unit Value')
-            ->where('key', 'like', 'custom_%')
-            ->first();
+$unitValueColumn = request()->user()->propertyColumns()
+    ->where('label', 'Unit Value')
+    ->where('key', 'like', 'custom_%')
+    ->first();
 
         $total = $properties->sum(function ($property) use ($unitValueColumn) {
             if (! $unitValueColumn) {
